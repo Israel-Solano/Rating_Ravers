@@ -1,0 +1,6 @@
+selenium
+selectorlib
+fake-useragent
+webdriver_manager
+requests
+flask

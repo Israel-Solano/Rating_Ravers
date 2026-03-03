@@ -1,0 +1,33 @@
+product_title:
+    css: 'h1 a[data-hook="product-link"]'
+    type: Text
+starNum:
+    css: 'div[data-hook="total-review-count"] span.a-size-base.a-color-secondary'
+    type: Text
+rating:
+    css: 'span[data-hook="rating-out-of-text"]'
+    type: Text
+reviews:
+    css: 'i[data-hook="review-star-rating"] span.a-icon-alt'
+    multiple: true
+    type: Text
+review_count:
+    css: 'div[data-hook="cr-filter-info-review-rating-count"]'
+    type: Text
+    filters:
+        - Strip
+from_other_countries:
+    css: 'h3[data-hook="dp-global-reviews-header"]'
+    type: Text
+review_date:
+    css: 'span[data-hook="review-date"]'
+    multiple: true
+    type: Text
+    filters:
+        - Strip
+review_text:
+    css: 'span[data-hook="review-body"] span'
+    multiple: true
+    type: Text
+    filters:
+        - Strip
