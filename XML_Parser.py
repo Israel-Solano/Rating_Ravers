@@ -8,8 +8,8 @@ import requests
 import xml.etree.ElementTree as ET
 
 # Change this per site
-SITEMAP_INDEX_URL = "https://www.mycolombianrecipes.com/sitemap_index.xml"
-OUTPUT_CSV ="colombian.csv"
+SITEMAP_INDEX_URL = "https://www.goodreads.com/siteindex.author.xml"
+OUTPUT_CSV = "goodreads_authors.csv"
 
 HEADERS = {
     "User-Agent": (
@@ -18,16 +18,13 @@ HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Encoding": "identity",  # Ask for raw/uncompressed so WE control decompression
     "Connection": "keep-alive",
+    # "Referer": "https://www.nytimes.com/",
+    "DNT": "1",
 }
 
-def fetch(url):
-    resp = requests.get(url, headers=HEADERS, timeout=30)
-    resp.raise_for_status()
-    return resp.content
-
 def clean_xml_bytes(xml_bytes: bytes) -> bytes:
-    # Try to strip leading/trailing whitespace and null bytes
     xml_bytes = xml_bytes.strip().replace(b"\x00", b"")
     return xml_bytes
 
@@ -35,9 +32,10 @@ def fetch_xml_maybe_gzip(url):
     resp = requests.get(url, headers=HEADERS, timeout=30)
     resp.raise_for_status()
     raw = resp.content
-    if url.lower().endswith(".gz"):
+    # Detect gzip by magic bytes (1f 8b), NOT by URL extension
+    if raw[:2] == b'\x1f\x8b':
         raw = gzip.decompress(raw)
-    return raw  # bytes
+    return raw
 
 def parse_sitemap_index(xml_bytes):
     xml_bytes = clean_xml_bytes(xml_bytes)
@@ -47,6 +45,7 @@ def parse_sitemap_index(xml_bytes):
     return [e.text.strip() for e in loc_elems if e.text]
 
 def parse_urlset(xml_bytes):
+    xml_bytes = clean_xml_bytes(xml_bytes)
     ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     root = ET.fromstring(xml_bytes)
     loc_elems = root.findall("sm:url/sm:loc", ns)

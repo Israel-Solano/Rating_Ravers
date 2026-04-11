@@ -348,8 +348,8 @@ def main():
             pass
     
     # ========== CONFIGURATION ==========
-    urls_file = 'resources/colombian.csv'
-    output_file = 'resources/nutrition_data.csv'
+    urls_file = 'resources/epicurious.csv'
+    output_file = 'resources/epicurious_filtered.csv'
     
     # Anti-blocking settings (more conservative)
     MIN_DELAY = 1   # Minimum seconds between requests
