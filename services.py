@@ -28,6 +28,8 @@ FIELDNAMES = [
 
 FAILED_FIELDNAMES = ["url", "reason"]
 
+RESTART_AFTER_RETRIES = 5
+
 
 def create_driver():
     options = Options()
@@ -53,6 +55,7 @@ def scrape_vgen_service(driver, url: str, delay_seconds: float = 5.0) -> dict:
         "category": None,
         "accepts": None,
         "last_updated": None,
+        "_retried": False,
     }
 
     try:
@@ -68,6 +71,7 @@ def scrape_vgen_service(driver, url: str, delay_seconds: float = 5.0) -> dict:
             )
         except TimeoutException:
             print(f"WARNING: detailsHeading never appeared for {url}, reloading...")
+            data["_retried"] = True
             try:
                 driver.get(url)
                 WebDriverWait(driver, 15).until(
@@ -75,11 +79,12 @@ def scrape_vgen_service(driver, url: str, delay_seconds: float = 5.0) -> dict:
                 )
             except TimeoutException:
                 print(f"WARNING: detailsHeading still missing after reload for {url}")
+
         sleep(3)
         debug_path = f"debug_{url.split('/')[3]}_{url.split('/')[-1][:8]}.html"
         # with open(debug_path, "w", encoding="utf-8") as dbg:
         #     dbg.write(driver.page_source)
-        print(f"DEBUG: saved page source to {debug_path}")
+        # print(f"DEBUG: saved page source to {debug_path}")
 
         soup = BeautifulSoup(driver.page_source, "html.parser")
 
@@ -122,10 +127,10 @@ def scrape_vgen_service(driver, url: str, delay_seconds: float = 5.0) -> dict:
                     data["starting_price"] = m.group(1)
 
         rating_el = soup.find(
-            string=lambda s: isinstance(s, str) and re.search(r"[\d\.]+\s*[·•\u00b7\u2027\u22c5]\s*\d+\s+reviews", s)
+            string=lambda s: isinstance(s, str) and re.search(r"[\d\.]+\s*[·•\u00b7\u2027\u22c5]\s*\d+\s+reviews?", s)
         )
         if rating_el:
-            m = re.search(r"([\d\.]+)\s*[·•\u00b7\u2027\u22c5]\s*(\d+)\s+reviews", rating_el)
+            m = re.search(r"([\d\.]+)\s*[·•\u00b7\u2027\u22c5]\s*(\d+)\s+reviews?", rating_el)
             if m:
                 try:
                     data["rating"] = float(m.group(1))
@@ -133,7 +138,7 @@ def scrape_vgen_service(driver, url: str, delay_seconds: float = 5.0) -> dict:
                     pass
                 data["reviews_count"] = int(m.group(2))
 
-        review_strings = [s.strip() for s in soup.strings if re.search(r'\d+\s+reviews', str(s))]
+        review_strings = [s.strip() for s in soup.strings if re.search(r'\d+\s+reviews?', str(s))]
         print(f"RATING SEARCH: {review_strings}")
 
         ACCEPT_KEYWORDS = [
@@ -213,7 +218,7 @@ def scrape_from_file(input_path: str, output_csv: str, delay_seconds: float = 5.
         failed_f.flush()
 
     driver = create_driver()
-    processed = 0
+    retry_count = 0
 
     try:
         for url in urls:
@@ -221,28 +226,37 @@ def scrape_from_file(input_path: str, output_csv: str, delay_seconds: float = 5.
                 print(f"SKIP (already done): {url}")
                 continue
 
-            if processed > 0 and processed % 10 == 0:
-                print("RESTARTING DRIVER TO CLEAR CACHE")
-                try:
-                    driver.quit()
-                except Exception:
-                    pass
-                driver = create_driver()
-
             info = scrape_vgen_service(driver, url, delay_seconds)
-            processed += 1
 
-            if not info.get("service_name") or info["service_name"].startswith("ERROR") or (int(info["reviews_count"] or 0) < 30):
+            if info.get("_retried"):
+                retry_count += 1
+                print(f"  [retry_count={retry_count}]")
+                if retry_count >= RESTART_AFTER_RETRIES:
+                    print("RESTARTING DRIVER — too many retries, browser likely degraded")
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+                    driver = create_driver()
+                    retry_count = 0
+            else:
+                retry_count = 0
+
+            info.pop("_retried", None)
+
+            if not info.get("service_name") or info["service_name"].startswith("ERROR"):
                 failed_writer.writerow({"url": url, "reason": info.get("service_name", "Unknown error")})
                 failed_f.flush()
                 print(f"FAILED: {url}")
-            else:
+            elif int(info["reviews_count"] or 0) >= 30:
                 writer.writerow(info)
                 f.flush()
                 print(
                     f"OK: {url} -> {info['service_name']} "
                     f"(${info['starting_price']}, {info['reviews_count']} reviews)"
                 )
+            else:
+                print(f"SKIP (not enough reviews): {url} -> {info['service_name']} ({info['reviews_count']} reviews)")
 
     except KeyboardInterrupt:
         print("Interrupted by user")
